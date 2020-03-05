@@ -1,8 +1,12 @@
-## Part 4 - [Testing Express servers, user administration](https://fullstackopen.com/en/part4)
+# Part 4 - [Testing Express servers, user administration](https://fullstackopen.com/en/part4)
 
 ---
 
-### [a) Structure of backend application, introduction to testing](https://fullstackopen.com/en/part4/structure_of_backend_application_introduction_to_testing)
+## [a) Structure of backend application, introduction to testing](https://fullstackopen.com/en/part4/structure_of_backend_application_introduction_to_testing)
+
+### Project structure
+
+백엔드를 더 진행하기 전, Node.js의 폴더 구조를 정돈해보자.
 
 `Node.js Best Practice Project Structure`
 
