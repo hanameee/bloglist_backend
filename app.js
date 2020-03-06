@@ -1,11 +1,27 @@
 const express = require("express");
-const middleware = require("./utils/middleware");
 const bodyParser = require("body-parser");
-const notesRouter = require("./controllers/blogs");
 const morgan = require("morgan");
-const app = express();
+const cors = require("cors");
+const mongoose = require("mongoose");
 
+const middleware = require("./utils/middleware");
+const config = require("./utils/config");
+const notesRouter = require("./controllers/blogs");
+
+mongoose.set("useUnifiedTopology", true);
+console.log("connecting to", config.MONGODB_URI);
+mongoose
+    .connect(config.MONGODB_URI, { useNewUrlParser: true })
+    .then(() => {
+        console.log("connected to MongoDB");
+    })
+    .catch(error => {
+        console.log("error connection to MongoDB:", error.message);
+    });
+
+const app = express();
 app.use(bodyParser.json());
+app.use(cors());
 morgan.token("data", function(req, res) {
     return JSON.stringify(req.body);
 });

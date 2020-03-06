@@ -1,9 +1,20 @@
-const notesRouter = require("express").Router();
+const blogsRouter = require("express").Router();
+const Blog = require("../models/blog");
 
-let blogs = [{ writer: "hannah", content: "very first blog" }];
-
-notesRouter.get("/", (request, response) => {
-    response.json(blogs);
+blogsRouter.get("/", (request, response) => {
+    Blog.find({}).then(blogs => {
+        response.json(blogs);
+    });
 });
 
-module.exports = notesRouter;
+blogsRouter.post("/", (request, response, next) => {
+    const blog = new Blog(request.body);
+
+    blog.save()
+        .then(savedBlog => {
+            response.status(201).json(savedBlog);
+        })
+        .catch(error => next(error));
+});
+
+module.exports = blogsRouter;
