@@ -4,7 +4,7 @@
 
 ## [a) Structure of backend application, introduction to testing](https://fullstackopen.com/en/part4/structure_of_backend_application_introduction_to_testing)
 
-### Project structure
+### 🚧 Project structure
 
 백엔드를 더 진행하기 전, Node.js의 폴더 구조를 정돈해보자.
 
@@ -199,3 +199,97 @@ noteSchema.set('toJSON', {
 
 module.exports = mongoose.model('Note', noteSchema)
 ```
+
+
+
+### 🧪 Testing Node applications
+
+Automated Testing 에 대해 알아보자.
+
+#### 1. Jest 를 사용한 unit testing
+
+`npm install --save-dev jest`
+dev 단계에서만 쓰일 것이므로 --save-dev flag를 붙여준다.
+
+`package.json` 
+
+```js
+{
+  "scripts": {
+    ...
+    "test": "jest --verbose"  // test 명령어로 Jest 를 사용한 test 를 실행하고, verbose style 로 execution 결과를 report 할 것
+  },
+ ...
+  "jest": {
+   "testEnvironment": "node" // Jest의 최신 버전에선 testEnvironment를 명시할 것을 요구
+ }
+}
+```
+
+`tests/palindrome.test.js `
+
+```js
+// 테스트 할 Function을 import 해온 뒤 변수에 할당
+const palindrome = require('../utils/for_testing').palindrome
+
+// 개별 test cases 는 test function 안에 정의됨 
+// 첫번째 파라미터는 test description (string)
+// 두번째 파라미터는 test case의 functionality 를 정의하는 함수
+test('palindrome of a', () => {
+  const result = palindrome('a')
+
+  expect(result).toBe('a')
+})
+
+test('palindrome of react', () => {
+  const result = palindrome('react')
+
+  expect(result).toBe('tcaer')
+})
+
+test('palindrome of releveler', () => {
+  const result = palindrome('releveler')
+
+  expect(result).toBe('releveler')
+})
+```
+
+Test case 의 Functionality 를 정의하는 함수를 조금 더 자세히 보면 다음과 같다.
+
+```js
+() => {
+  // test 될 코드를 실행해 result 변수에 저장한다
+  const result = palindrome('react')
+  // expect 함수를 이용해 result 를 verify 한다
+  // expect 함수는 다양한 matcher 함수들을 제공하는데, 우리는 두 string을 비교하므로 toBe 를 사용한 것
+  expect(result).toBe('tcaer')
+}
+```
+
+Test 를 돌려보면 아래와 같은 결과가 나옴을 알 수 있다.
+
+![image-20200306162907642](Part4-Testing-Express-servers-user-administration.assets/image-20200306162907642.png)
+
+
+
++) Test cases 들을 describe block 으로 감쌀 수도 있는데, 이런 Describe blocks 들은 test 들을 logical collections 로 그룹핑 할 때 쓰인다.
+
+```js
+const average = require("../utils/for_testing").average;
+
+describe("average", () => {
+    test("of one value is the value itself", () => {
+      	// result 라는 변수에 따로 할당하지 않고 바로 코드 식을 expect 안에 넣을 수도 있다.
+        expect(average([1])).toBe(1);
+    });
+
+    test("of many is calculated right", () => {
+        expect(average([1, 2, 3, 4, 5, 6])).toBe(3.5);
+    });
+
+    test("of empty array is zero", () => {
+        expect(average([])).toBe(0);
+    });
+});
+```
+

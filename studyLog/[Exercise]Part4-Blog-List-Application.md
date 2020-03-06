@@ -4,8 +4,6 @@
 
 Part4 의 Exercise인 Blog List 를 만드는 과정을 단계별로 기술하며 Part 3 Backend 내용을 전반적으로 복습한다.
 
-
-
 ## 0. Application 시작하기
 
 - `npm init` 으로 Application의 template을 만든다.
