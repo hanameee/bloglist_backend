@@ -36,7 +36,7 @@ describe("getting blog", () => {
     });
 });
 
-describe("adding new blog", () => {
+describe("adding a new blog", () => {
     test("vaild post should be successfuly saved", async () => {
         const newBlog = {
             title: "I'll be newly saved",
@@ -100,7 +100,7 @@ describe("adding new blog", () => {
     });
 });
 
-describe("deleting blog", () => {
+describe("deleting a blog", () => {
     test("deleting vaild blog should succeed", async () => {
         const blogsAtStart = await helper.blogsInDb();
         const blogToDelete = blogsAtStart[0];
@@ -111,6 +111,22 @@ describe("deleting blog", () => {
 
         const contentsAtEnd = blogsAtEnd.map(blog => blog.title);
         expect(contentsAtEnd).not.toContain(blogToDelete.title);
+    });
+});
+
+describe("updating a blog", () => {
+    test("update likes property", async () => {
+        const blogsAtStart = await helper.blogsInDb();
+        const blogToUpdate = {
+            ...blogsAtStart[0],
+            likes: 100
+        };
+        const response = await api
+            .put(`/api/blogs/${blogsAtStart[0].id}`)
+            .send(blogToUpdate)
+            .expect(200);
+        console.log(response);
+        expect(response.body.likes).toEqual(blogToUpdate.likes);
     });
 });
 

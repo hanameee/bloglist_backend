@@ -343,7 +343,7 @@ main()
 
 ##### async/await 에서의 error handling
 
-try-catch 를 이용한다 :)
+try-catch 를 이용한다.
 
 ```js
 notesRouter.post('/', async (request, response, next) => {

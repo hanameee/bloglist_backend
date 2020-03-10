@@ -428,3 +428,12 @@ test("all blogs are returned", async () => {
 //...
 ```
 
+
+
+#### Describe 를 통한 test 구조화
+
+Jest의 describe 함수를 사용하면 여러가지 test 들을 계층을 두어 구조화시킬 수 있다.
+Test case 들이 많아질 경우 아래처럼 구조화시키면 보기 좋다! 😉
+
+![image-20200310183447386]([Exercise]Part4-Blog-List-Application.assets/image-20200310183447386.png)
+

@@ -1,0 +1,9 @@
+put http://localhost:3001/api/blogs/5e61de4247c1a712ab663876
+Content-Type: application/json
+
+{
+    "title": "I am the NEW first post",
+    "author": "hanamee",
+    "url": "http://www.naver.com",
+    "likes": 50
+}
