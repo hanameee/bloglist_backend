@@ -46,7 +46,7 @@ test("new post is successfully saved into Database", async () => {
         .post(`/api/blogs`)
         .send(newBlog)
         .expect(201)
-        .expect("Content-type", /application\/json/);
+        .expect("Content-Type", /application\/json/);
 
     // helper의 blogsInDb 역시 async function이므로 앞에 꼭 await 을 붙여야 함에 주의!
     const blogAtEnd = await helper.blogsInDb();
@@ -54,6 +54,22 @@ test("new post is successfully saved into Database", async () => {
 
     const contents = blogAtEnd.map(blog => blog.title);
     expect(contents).toContain(newBlog.title);
+});
+
+test("post with missing likes property should default to value 0", async () => {
+    const newBlogMissingLikes = {
+        title: "Will someone like me?",
+        author: "newbie",
+        url: "https://www.youtube.com"
+    };
+
+    const response = await api
+        .post(`/api/blogs`)
+        .send(newBlogMissingLikes)
+        .expect(201)
+        .expect("Content-Type", /application\/json/);
+
+    expect(response.body.likes).toBe(0);
 });
 
 afterAll(() => {
