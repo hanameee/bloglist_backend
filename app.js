@@ -4,19 +4,20 @@ const morgan = require("morgan");
 const cors = require("cors");
 const mongoose = require("mongoose");
 
+const logger = require("./utils/logger");
 const middleware = require("./utils/middleware");
 const config = require("./utils/config");
 const notesRouter = require("./controllers/blogs");
 
 mongoose.set("useUnifiedTopology", true);
-console.log("connecting to", config.MONGODB_URI);
+logger.info("connecting to", config.MONGODB_URI);
 mongoose
     .connect(config.MONGODB_URI, { useNewUrlParser: true })
     .then(() => {
-        console.log("connected to MongoDB");
+        logger.info("connected to MongoDB");
     })
     .catch(error => {
-        console.log("error connection to MongoDB:", error.message);
+        logger.error("error connection to MongoDB:", error.message);
     });
 
 const app = express();
@@ -26,11 +27,15 @@ app.use(express.static("build"));
 morgan.token("data", function(req, res) {
     return JSON.stringify(req.body);
 });
-app.use(
-    morgan(
-        ":method :url :status :res[content-length] - :response-time ms :data"
-    )
-);
+
+if (process.env.NODE_ENV !== "test") {
+    app.use(
+        morgan(
+            ":method :url :status :res[content-length] - :response-time ms :data"
+        )
+    );
+}
+
 app.use("/api/blogs", notesRouter);
 
 app.use(middleware.unknownEndpoint);
