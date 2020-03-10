@@ -9,8 +9,9 @@ Part4 의 Exercise인 Blog List 를 만드는 과정을 단계별로 기술하�
 - `npm init` 으로 Application의 template을 만든다.
 - `npm install` 로 dependencies, devdependencies를 설치한다. [npm install에서 -S, -D flag의 역할](https://stackoverflow.com/questions/36022926/what-do-the-save-flags-do-with-npm-install)
 -  `package.json` 의 script를 수정한다. (start, watch, test 등)
--  `.gitignore` , `.env` 파일 등을 작성한다.
--  
+- `.gitignore` , `.env` 파일 등을 작성한다.
+
+  
 
 ## 1. Express 도입하고 구조 정리하기
 
@@ -251,5 +252,179 @@ blogsRouter.post("/", (request, response, next) => {
 });
 
 module.exports = blogsRouter;
+```
+
+
+
+## 4. 테스트 환경 설정하기
+
+### 실행환경 별로 다른 환경변수 연결해주기
+
+production mode, test mode, development mode 마다 각자 다른 환경변수를 사용하게끔 설정해 줄 수 있다.
+
+참고: cross-env 는 Windows 에서도 mode를 specify 한 대로 작동하도록 추가해준 패키지
+
+`package.json`
+
+```js
+{
+  // ...
+  "scripts": {
+    "start": "cross-env NODE_ENV=production node index.js",
+    "watch": "cross-env NODE_ENV=development nodemon index.js",
+    // ...
+    "test": "cross-env NODE_ENV=test jest --verbose --runInBand",
+  },
+  // ...
+}
+```
+
+`utils/config.js`
+
+```js
+require("dotenv").config();
+
+let PORT = process.env.PORT;
+let MONGODB_URI = process.env.MONGODB_URI;
+// test 환경에서는 다른 MONGODB_URI 를 사용하도록!
+if (process.env.NODE_ENV === "test") {
+    MONGODB_URI = process.env.TEST_MONGODB_URI;
+}
+module.exports = {
+    MONGODB_URI,
+    PORT
+};
+```
+
+이와 마찬가지로 .env 파일에도 수정된 TEST_MONGODB_URI 환경변수를 추가해준다.
+
+
+
+### Test 환경에서는 logging 방지하기
+
+Logger을 별도의 util로 빼서 관리하면 환경에 따라 관리하거나 외부 logging service를 도입해야 할 때 해당 파일만 변경하면 되기에 좋다.
+
+`utils/logger.js`
+
+```js
+const info = (...params) => {
+    if (process.env.NODE_ENV !== "test") {
+        console.log(...params);
+    }
+};
+
+const error = (...params) => {
+    console.error(...params);
+};
+
+module.exports = {
+    info,
+    error
+};
+```
+
+별도로 분리한 Logger 모듈을 사용하고 싶을땐 아래와 같이 사용할 수 있다.
+
+`app.js`
+
+```js
+const logger = require("./utils/logger");
+//...
+logger.info("connecting to", config.MONGODB_URI);
+mongoose
+    .connect(config.MONGODB_URI, { useNewUrlParser: true })
+    .then(() => {
+        logger.info("connected to MongoDB");
+    })
+    .catch(error => {
+        logger.error("error connection to MongoDB:", error.message);
+    });
+```
+
+이제 test 환경에서는 Logging이 되지 않아 깔끔하다.
+
+
+
+### Backend API 테스트하기
+
+#### Initializing DB before tests
+
+테스트가 시작될 때마다 항상 동일한 DB를 가지고 테스트 할 수 있도록 ( = controlled environmnet) DB를 initialize 해주는 과정이 필요하다.
+
+일단 매번 사용할 DB 관련 코드를 test_helper 이라는 별개의 파일로 두고 시작하자!
+
+`blog_api_test_helper.js`
+
+```js
+const Blog = require("../models/blog");
+
+// 매번 이 DB로 초기화 되게 될 것
+const initialBlogs = [
+    {
+        title: "I am Groot",
+        author: "hannah",
+        url: "https://www.naver.com",
+        likes: 13
+    },
+    {
+        title: "Banana is yellow",
+        author: "banana",
+        url: "https://www.daum.net",
+        likes: 7
+    }
+];
+
+module.exports = {
+    initialBlogs
+};
+
+```
+
+Jest 매 테스트가 끝나고 나서 코드를 실행하게 해주는  `afterAll` 외에, 매 테스트 시작 전에 코드를 실행하게 해주는 `beforeEach` 함수를 가지고 있다. 이 함수를 가지고 DB를 initialize 한다.
+
+`test/blog_api.test.js`
+
+```js
+beforeEach(async () => {
+    await Blog.deleteMany({});
+  	// 주의) async 함수 안에 또다른 async 함수를 넣으면 2번째 async 함수는 별개의 비동기함수로 작동하기에 두 번째 함수를 기다리지 않고 첫 번째 함수가 끝나버릴 수 있다.
+  	// 따라서 Promise array를 만들어 Promise.all 로 작성하거나 (resolve의 순서보장 X), 아래처럼 for...of를 활용해 순차적으로 resolve 되게 작성할 수 있다.
+    for (let blog of helper.initialBlogs) {
+        let blogObject = new Blog(blog);
+        await blogObject.save();
+    }
+});
+```
+
+
+
+#### jest + supertest 를 사용한 테스트
+
+`const api = supertest(app)` 처럼 Express application 을 supertest로 감싸주면 api 를 [superagent](https://github.com/visionmedia/superagent) 객체로 사용할 수 있다.
+
+이 superagent 객체는 backend로 HTTP request 를 보내 API test를 가능하게 한다.
+사용법은 아래 코드와 같다.
+
+`test/blog_api.test.js`
+
+```js
+const supertest = require("supertest");
+const app = require("../app");
+const Blog = require("../models/blog");
+const helper = require("./blog_api_test_helper");
+const api = supertest(app);
+
+// ...
+test("all blogs are returned", async () => {
+  	// [supertest] api 객체의 method를 통해 API verify (status code, header 등)
+    const response = await api
+        .get("/api/blogs")
+        .expect(200)
+        .expect("Content-Type", /application\/json/);
+  	// [jest] expect method를 통해 response의 format이나 body의 data verify
+    expect(response.body.length).toBe(helper.initialBlogs.length);
+});
+
+//...
 ```
 

@@ -293,3 +293,75 @@ describe("average", () => {
 });
 ```
 
+
+
+### ⏰ async / await
+
+async/await 문법은 함수는 promise를 리턴하는 비동기적 함수를 마치 동기적 함수를 작성할 때와 유사하게 작성하게 해준다.
+
+기존 DB에서 notes 를 fetch 해오는, promise 를 리턴하는 함수는 아래와 같이 생겼었다.
+
+```js
+Note.find({})
+  .then(notes => {
+  	console.log('opreration returned the following notes', notes)
+})
+	.then(response => {
+  	console.log("the first note is removed")
+})
+// promise chaining을 통해 callback hell 탈출 가능
+```
+
+이런 promise chaining은 기존 비동기함수를 처리하던 방법인 콜백함수보다는 나은 방법이지만, 더 나은 방법이 있다!
+
+ES6 에서 소개된 [generator functions](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Generator) 은 잘 쓰이지 않고, 대신 ES7에서 소개된 async/await 키워드가 generator과 같은 기능을 제공하며 훨씬 더 문법적으로 이해하기 쉽다.
+
+```js
+// 기존 .then chaining을 사용한 방법
+Note.find({}).then(notes => {console.log('opreration returned the following notes', notes)})
+
+// async/await 키워드를 사용한 방법
+const notes = await Note.find({})
+console.log('opreration returned the following notes', notes)
+```
+
+두번째 async/await 을 사용한 방법은 완벽하게 synchronous code 처럼 보인다!
+코드 실행이 `const notes = await Note.find({})` 에서 멈추고, promise가 furfilled 될 때 까지 기다린다. promise가 furfilled 되면 그제서야 다음 코드가 실행된다.
+
+다만, await 키워드는 아무데에서나 쓰일 수 있는게 아니다! 반드시 async 함수 안에서만 사용될 수 있다.
+
+```js
+// async 키워드를 통해 main 함수가 비동기적으로 작동한다는 것을 선언한다
+const main = async () => {
+  const notes = await Note.find({})
+  console.log('opreration returned the following notes', notes)
+  const response = await notes[0].remove()
+  console.log('the first note is removed')
+}
+main()
+```
+
+##### async/await 에서의 error handling
+
+try-catch 를 이용한다 :)
+
+```js
+notesRouter.post('/', async (request, response, next) => {
+  const body = request.body
+
+  const note = new Note({
+    content: body.content,
+    important: body.important === undefined ? false : body.important,
+    date: new Date(),
+  })
+  // error handling
+  try { 
+    const savedNote = await note.save()
+    response.json(savedNote.toJSON())
+  } catch(exception) {
+    // next 함수를 호출해 exception을 error handling middleware로 보낸다!
+    next(exception)
+  }
+})
+```
+
