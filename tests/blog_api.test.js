@@ -22,6 +22,40 @@ test("all blogs are returned", async () => {
     expect(response.body.length).toBe(helper.initialBlogs.length);
 });
 
+test("unique identifier property of the blogs are named id", async () => {
+    const response = await api
+        .get("/api/blogs")
+        .expect(200)
+        .expect("Content-Type", /application\/json/);
+
+    const receivedBlogs = response.body;
+    for (let blog of receivedBlogs) {
+        expect(blog.id).toBeDefined();
+    }
+});
+
+test("new post is successfully saved into Database", async () => {
+    const newBlog = {
+        title: "I'll be newly saved",
+        author: "newbie",
+        url: "https://www.facebook.com",
+        likes: 0
+    };
+
+    await api
+        .post(`/api/blogs`)
+        .send(newBlog)
+        .expect(201)
+        .expect("Content-type", /application\/json/);
+
+    // helper의 blogsInDb 역시 async function이므로 앞에 꼭 await 을 붙여야 함에 주의!
+    const blogAtEnd = await helper.blogsInDb();
+    expect(blogAtEnd.length).toBe(helper.initialBlogs.length + 1);
+
+    const contents = blogAtEnd.map(blog => blog.title);
+    expect(contents).toContain(newBlog.title);
+});
+
 afterAll(() => {
     mongoose.connection.close();
 });
