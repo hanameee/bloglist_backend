@@ -72,6 +72,30 @@ test("post with missing likes property should default to value 0", async () => {
     expect(response.body.likes).toBe(0);
 });
 
+test("blogs missing title can't be saved", async () => {
+    const newBlogMissingTitle = {
+        author: "newbie",
+        url: "https://www.youtube.com"
+    };
+
+    await api
+        .post(`/api/blogs`)
+        .send(newBlogMissingTitle)
+        .expect(400);
+});
+
+test("blogs missing url can't be saved", async () => {
+    const newBlogMissingUrl = {
+        title: "Will someone like me?",
+        author: "newbie"
+    };
+
+    await api
+        .post(`/api/blogs`)
+        .send(newBlogMissingUrl)
+        .expect(400);
+});
+
 afterAll(() => {
     mongoose.connection.close();
 });
