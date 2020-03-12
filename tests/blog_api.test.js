@@ -136,7 +136,7 @@ describe("when there is initially 2 notes at db", () => {
 describe("when there is initially one user at db", () => {
     beforeEach(async () => {
         await User.deleteMany({});
-        for (let user of helper.initialBlogs) {
+        for (let user of helper.initialUsers) {
             let userObject = new User(user);
             await userObject.save();
         }
@@ -160,6 +160,42 @@ describe("when there is initially one user at db", () => {
 
         const usernames = usersAtEnd.map(user => user.username);
         expect(usernames).toContain(newUser.username);
+    });
+
+    test("creation fails with a duplicate username", async () => {
+        const usersAtStart = await helper.usersInDb();
+        const newUser = {
+            username: "rainwaltz",
+            name: "iamduplicate",
+            password: "gosk"
+        };
+        const result = await api
+            .post("/api/users")
+            .send(newUser)
+            .expect(400);
+
+        const usersAtEnd = await helper.usersInDb();
+        expect(usersAtEnd.length).toBe(usersAtStart.length);
+        expect(result.body.error).toContain("`username` to be unique");
+    });
+
+    test("creation fails with username shorter than 3 characters", async () => {
+        const usersAtStart = await helper.usersInDb();
+        const newUser = {
+            username: "i",
+            name: "short",
+            password: "pw"
+        };
+        const result = await api
+            .post("/api/users")
+            .send(newUser)
+            .expect(400);
+
+        const usersAtEnd = await helper.usersInDb();
+        expect(usersAtEnd.length).toBe(usersAtStart.length);
+        expect(result.body.error).toContain(
+            "is shorter than the minimum allowed length"
+        );
     });
 });
 afterAll(() => {

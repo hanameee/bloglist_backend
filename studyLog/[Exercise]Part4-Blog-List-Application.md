@@ -495,3 +495,42 @@ Test case 들이 많아질 경우 아래처럼 구조화시키면 보기 좋다!
   ```
 
   post 엔 password 를 직접 저장하는 것이 아니라, bcrypt 를 통해 암호화한 password hash 값을 저장해야 함에 유의할 것.
+
+### 2. User 생성 제약조건 두기
+
+1) username과 password 는 필수 값 : mongoose의 [built-in](https://mongoosejs.com/docs/validation.html#built-in-validators) validation 사용
+2) username과 password 는 최소 3글자 이상 : username은 mongoose의 [built-in](https://mongoosejs.com/docs/validation.html#built-in-validators) validation을, password 는 hash값으로 db에 저장되므로 db에서 validate 하는 것이 아니라 controller에서 validate 할 것
+3) username은 unique 할 것 : mongoose-unique-validator 플러그인 사용
+
+`models/user`
+
+```js
+const mongoose = require("mongoose");
+const uniqueValidator = require("mongoose-unique-validator");
+
+const userSchema = new mongoose.Schema({
+    username: { type: String, unique: true, required: true, minlength: 3 },
+    name: String,
+    password: { type: String, required: true }
+});
+// ...
+```
+
+`controllers/users`
+
+```js
+userRouter.post("/", async (request, response, next) => {
+    try {
+        const body = request.body;
+        if (body.password.length < 3) {
+            return response
+                .status(400)
+                .json({
+                    error:
+                        "User validation failed: : Password is shorter than the minimum allowed length (3)."
+                });
+        }
+```
+
+password의 length validation은 이렇게 controller에서 해주기!
+
