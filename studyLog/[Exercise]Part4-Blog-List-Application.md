@@ -534,3 +534,69 @@ userRouter.post("/", async (request, response, next) => {
 
 password의 length validation은 이렇게 controller에서 해주기!
 
+### 3. User과 Blog 연결하기
+
+Blog는 blog 를 작성한 사람의 user information 을 가지고 있게, User은 자신이 작성한 blogs 들의 정보를 가지고 있게 변경하자.
+
+1) Schema 변경
+
+`models/blog`
+
+```js
+const blogSchema = new mongoose.Schema({
+    title: String,
+    author: String,
+    url: String,
+    likes: Number,
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+    }
+});
+```
+
+`models/user`
+
+```js
+const userSchema = new mongoose.Schema({
+    username: { type: String, unique: true, required: true, minlength: 3 },
+    name: String,
+    password: { type: String, required: true },
+    blogs: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Blog"
+        }
+    ]
+});
+```
+
+2) Controller 에서 Populate 메소드 사용
+
+`controllers/blogs`
+
+```js
+blogsRouter.get("/", async (request, response) => {
+    const blogs = await Blog.find({}).populate("user", {
+        username: 1,
+        name: 1
+    });
+    response.json(blogs);
+});
+```
+
+`controllers/users`
+
+```js
+userRouter.get("/", async (request, response) => {
+    const users = await User.find({}).populate("blogs", {
+        url: 1,
+        title: 1,
+        author: 1
+    });
+    response.json(users.map(u => u.toJSON()));
+});
+```
+
+이렇게 Model 과 Controller 을 수정하면, /api/notes 또는 /api/blogs 로 GET 요청 시 각각 user, blogs 필드에서 두 collection 이 join 된 결과를 볼 수 있다.
+
