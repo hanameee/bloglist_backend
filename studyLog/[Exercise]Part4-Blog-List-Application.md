@@ -396,8 +396,6 @@ beforeEach(async () => {
 });
 ```
 
-
-
 #### jest + supertest 를 사용한 테스트
 
 `const api = supertest(app)` 처럼 Express application 을 supertest로 감싸주면 api 를 [superagent](https://github.com/visionmedia/superagent) 객체로 사용할 수 있다.
@@ -428,8 +426,6 @@ test("all blogs are returned", async () => {
 //...
 ```
 
-
-
 #### Describe 를 통한 test 구조화
 
 Jest의 describe 함수를 사용하면 여러가지 test 들을 계층을 두어 구조화시킬 수 있다.
@@ -437,3 +433,65 @@ Test case 들이 많아질 경우 아래처럼 구조화시키면 보기 좋다!
 
 ![image-20200310183447386]([Exercise]Part4-Blog-List-Application.assets/image-20200310183447386.png)
 
+
+
+## 5. User management 기능 도입하기
+
+### 1. 단순 User HTTP POST 기능 + password hash 기능 구현
+
+- User model 파일 생성 (model/user)
+
+  ```js
+  const mongoose = require("mongoose");
+  
+  const userSchema = new mongoose.Schema({
+      username: String,
+      name: String,
+      password: String
+  });
+  
+  userSchema.set("toJSON", {
+      transform: (document, returnedObject) => {
+          returnedObject._id = returnedObject._id.toString();
+          delete returnedObject._id;
+          delete returnedObject.__v;
+          delete returnedObject.password;
+      }
+  });
+  
+  module.exports = mongoose.model("User", userSchema);
+  ```
+
+- userRouter handler 생성 (controllers/users)
+
+  ```js
+  const bcrypt = require("bcrypt");
+  const userRouter = require("express").Router();
+  const User = require("../models/user");
+  
+  userRouter.get("/", async (request, response) => {
+      const users = await User.find({});
+      response.json(users.map(u => u.toJSON()));
+  });
+  
+  userRouter.post("/", async (request, response, next) => {
+      try {
+          const body = request.body;
+          const saltRounds = 10;
+          const passwordHash = await bcrypt.hash(body.password, saltRounds);
+          const user = new User({
+              username: body.username,
+              name: body.name,
+              password: passwordHash
+          });
+          const savedUser = await user.save();
+          response.json(savedUser);
+      } catch (exception) {
+          next(exception);
+      }
+  });
+  
+  module.exports = userRouter;
+  ```
+
+  post 엔 password 를 직접 저장하는 것이 아니라, bcrypt 를 통해 암호화한 password hash 값을 저장해야 함에 유의할 것.

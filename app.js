@@ -8,6 +8,7 @@ const logger = require("./utils/logger");
 const middleware = require("./utils/middleware");
 const config = require("./utils/config");
 const notesRouter = require("./controllers/blogs");
+const usersRouter = require("./controllers/users");
 
 mongoose.set("useUnifiedTopology", true);
 logger.info("connecting to", config.MONGODB_URI);
@@ -37,6 +38,7 @@ if (process.env.NODE_ENV !== "test") {
 }
 
 app.use("/api/blogs", notesRouter);
+app.use("/api/users", usersRouter);
 
 app.use(middleware.unknownEndpoint);
 app.use(middleware.errorHandler);
