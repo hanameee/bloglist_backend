@@ -200,7 +200,9 @@ noteSchema.set('toJSON', {
 module.exports = mongoose.model('Note', noteSchema)
 ```
 
+---
 
+## b) [Testing the backend](https://fullstackopen.com/en/part4/testing_the_backend)
 
 ### 🧪 Testing Node applications
 
@@ -361,6 +363,351 @@ notesRouter.post('/', async (request, response, next) => {
   } catch(exception) {
     // next 함수를 호출해 exception을 error handling middleware로 보낸다!
     next(exception)
+  }
+})
+```
+
+---
+
+## [c) User administration](https://fullstackopen.com/en/part4/user_administration)
+
+user 과 note 는 1:n 관계이다.
+
+위와 같은 관계에 대해 모델링 방법이 정형화된  (note를 작성한 user의 id가 notes table에 foreign key 로 저장됨) Relational database 와는 달리, Mongo DB와 같은 Document database (schema-less) 는 이런 1:n 관계를 모델링하는 방법이 다양하다.
+
+Mongo DB 역시 다른 collection에서 reference 하기 위해 object의 id를 사용할 수 있다. ( foreign key 와 유사. )
+Mongo DB 는 ver 3.2 부터 join query 와 유사한 [lookup aggregation queries](https://docs.mongodb.com/manual/reference/operator/aggregation/lookup/) 가 생기긴 했지만, 이 역시 내부적으로는 multiple queries 를 날려 처리하기에 우리는 multiple queries 로 해결할 것임.
+
+### Mongoose schema for users
+
+user 과 note 의 1:n 관계를 모델링하는 방법은 다양하지만, 우리는 user document 안에 해당 user 이 작성한 note ids 를 저장하는 방법을 택할 것.
+
+`models/user.js`
+
+```js
+const mongoose = require('mongoose')
+
+const userSchema = new mongoose.Schema({
+  username: String,
+  name: String,
+  passwordHash: String,
+  // 아래 부분이 user document에 저장된 ids of notes 부분. Array of Mongo ids의 형태
+  notes: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Note'
+    }
+  ],
+})
+
+userSchema.set('toJSON', {
+  transform: (document, returnedObject) => {
+    returnedObject.id = returnedObject._id.toString()
+    delete returnedObject._id
+    delete returnedObject.__v
+    // the passwordHash should not be revealed
+    delete returnedObject.passwordHash
+  }
+})
+
+const User = mongoose.model('User', userSchema)
+
+module.exports = User
+```
+
+noteSchema 도 수정해주기
+
+`model/note.js`
+
+```js
+const noteSchema = new mongoose.Schema({
+  content: {
+    type: String,
+    required: true,
+    minlength: 5
+  },
+  date: Date,
+  important: Boolean,
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }
+})
+```
+
+이제 references 가 2개의 document에 각각 저장되었다. Note는 해당 note 를 작성한 user의 reference를, user은 자신이 작성한 notes 들의 reference array 를!
+
+### Creating Users
+
+User은 unique 한 username, name, 그리고 passwordHash 값을 가지고 있다. passwordHash 값은 유저의 비밀번호에 [one-way hash function](https://en.wikipedia.org/wiki/Cryptographic_hash_function) 이 적용된 결과값으로, 항상 이렇게 암호화된 hash 값을 DB에 저장해야 한다. 
+
+#### controller에 usersRoute handler 추가하기
+
+우리는 password hash 를 generate 하기 위해 bcrypt 패키지를 사용할 것.
+
+새로운 user 을 만드는 과정은 users 경로로 HTTP POST request 를 날리는 방식으로 이루어진다. 따라서 해당 과정을 담당할 별도의 router 을 정의해줘야 한다.
+
+`app.js` 
+
+```js
+const usersRouter = require('./controllers/users')
+// ...
+app.use("/api/users", usersRouter)
+```
+
+`controllers/users`
+
+```js
+const bcrypt = require("bcrypt");
+const usersRouter = require("express").Router();
+
+const User = require("../models/user");
+
+// 현재 존재하는 모든 user 가져오기
+usersRouter.get("/", async (request, response, next) => {
+    const users = await User.find({});
+    response.json(users.map(u => u.toJSON()));
+});
+
+// 새로운 user 만들기
+usersRouter.post("/", async (request, response, next) => {
+    try {
+        const body = request.body;
+
+        const saltRounds = 10;
+        const passwordHash = await bcrypt.hash(body.password, saltRounds);
+
+        const user = new User({
+            username: body.username,
+            name: body.name,
+            passwordHash
+        });
+
+        const savedUser = await user.save();
+        response.json(savedUser);
+    } catch (exception) {
+        next(exception);
+    }
+});
+
+module.exports = usersRouter;
+```
+
+#### Test 추가하기
+
+`tests/test_helper.js`
+
+```js
+// ...
+const usersInDb = async () => {
+    const users = await User.find({});
+    return users.map(user => user.toJSON());
+};
+
+module.exports = {
+    initialNotes,
+    nonExistingId,
+    notesInDb,
+    usersInDb
+};
+```
+
+`tests/notes_api.test.js`
+
+```js
+// ...
+const User = require("../models/user");
+// ...
+describe("when there is initially one user at db", () => {
+    beforeEach(async () => {
+        await User.deleteMany({});
+        const user = new User({ username: "root", password: "secret" });
+        await user.save();
+    });
+
+    test("creation succeeds with a fresh username", async () => {
+        const usersAtStart = await helper.usersInDb();
+
+        const newUser = {
+            username: "hanameee",
+            name: "hannah",
+            password: "goskgosk"
+        };
+
+        await api
+            .post("/api/users")
+            .send(newUser)
+            .expect(200)
+            .expect("Content-Type", /application\/json/);
+
+        const usersAtEnd = await helper.usersInDb();
+        expect(usersAtEnd.length).toBe(usersAtStart.length + 1);
+
+        const usernames = usersAtEnd.map(u => u.username);
+        expect(usernames).toContain(newUser.username);
+    });
+  
+    // 현재 중복 username 방지 기능은 구현하지 않았으므로 이 테스트는 fail 할 것 - TDD
+    test("creation fails with a duplicate username", async () => {
+        const usersAtStart = await helper.usersInDb();
+
+        const newUserWithDuplicateName = {
+            username: "root",
+            name: "groot",
+            password: "secret"
+        };
+
+        const result = api
+            .post("/api/users")
+            .send(newUserWithDuplicateName)
+            .expect(400)
+            .expect("Content-Type", /application\/json/);
+
+        expect(result.body.error).toContain("`username` to be unique");
+
+        const usersAtEnd = await helper.usersInDb();
+        expect(usersAtEnd.length).toBe(usersAtStart.length);
+    });
+});
+```
+
+#### schema 에 중복 username 방지 플러그인 추가하기
+
+`npm install --save mongoose-unique-validator`
+
+`models/user.js`
+
+```js
+const mongoose = require('mongoose')
+const uniqueValidator = require('mongoose-unique-validator')
+
+const userSchema = new mongoose.Schema({
+  username: {
+    // 이렇게 변경
+    type: String,
+    unique: true
+  },
+  name: String,
+// ...
+userSchema.plugin(uniqueValidator)
+// ...
+```
+
+이런 중복 방지 기능 외에도 최소 길이 제한, 허용되는 문자 제한 등 다양한 기능을 추가할 수 있다.
+
+### Creating Users 수정
+
+새로운 note 를 만들 때, 해당 note 가 그 노트를 생성한 유저에게 할당되도록 수정되어야 함.
+Note에 post request를 보낼 때, request body의 user field 에 userId가 같이 날라가게 수정하기.
+
+`controllers/notes.js`
+
+```js
+const User = require("../models/user");
+// ...
+notesRouter.post("/", async (request, response, next) => {
+    const body = request.body;
+  	// request body에서 같이 날라온 userId를 바탕으로 해당 user document 찾기
+    const user = await User.findById(body.userId);
+  
+    const note = new Note({
+        content: body.content,
+        important: body.important || false,
+        date: new Date(),
+      	// Note document 에는 user field 로 userId 값이 저장됨
+        user: user._id
+    });
+    try {
+      	const savedNote = await note.save();
+      	// 새로운 note document를 save 한 후, user document 의 notes field도 업데이트 해주기
+        user.notes = user.notes.concat(savedNote._id);
+      	// 새로운 user document도 저장!
+        await user.save();
+```
+
+새로운 note document 가 추가될 때, 상응하는 user document 의 notes field 도 함께 업데이트 된다는 것에 주의할 것.
+
+### Mongoose의 Populate 메서드를 통해 join 구현하기
+
+우리는 /api/users 에 HTTP GET 요청을 보낼 때, user object 가 단지 note id 뿐만 아니라 note content 까지 다 보여주길  원한다.
+
+Relational database (RDB) 에선 이 기능이 join query 를 통해 가능하지만, Mongo Db와 같은 document database 에선 이런 collections 간의 join query를 제대로 지원하지 않는다.
+
+대신, Mongoose 라이브러리의 **populate** 메서드를 통해 multiple query 를 날려 join 을 구현할 수 있다. 
+(단 RDB의 join은 transactional 한 것에 반해, multiple query 를 통한 join은 joined 되는 collection 들의 consistent 한 상태를 보장하지 않는다. State of the collections 들이 query 도중 변경될 수 있다는 것.)
+
+`controllers/users`
+
+```js
+usersRouter.get("/", async (request, response, next) => {
+    const users = await User.find({}).populate("notes");
+    response.json(users.map(u => u.toJSON()));
+});
+```
+
+populate method 는 find method 로 initial query 를 날린 이후에 chained 된다.
+
+populate method의 파라미터로 전달된 `notes` 는 뭘 뜻할까?
+현재 /api/users 로 GET 요청을 보내 얻어진 데이터는 다음과 같이 생겼다.
+
+![image-20200312160050764]([lecture]Part4-Testing-Express-servers-user-administration.assets/image-20200312160050764.png)
+
+우리가 notesRouter 을 정의할 때, user object에 note의 id만 저장하게 했기 때문에!
+
+그런데 `User.find({}).populate("notes")` query  를 통해, user collection 의 notes field는 해당 field가 reference 하고 있었던 note document 로 대체되게 된다.
+
+`model/user.js`
+
+![image-20200312160230320]([lecture]Part4-Testing-Express-servers-user-administration.assets/image-20200312160230320.png)
+
+Populate method 를 통해 note object 에서 우리가 원하는 field 만 가져올 수도 있다. (Mongo [syntax](https://docs.mongodb.com/manual/tutorial/project-fields-from-query-results/#return-the-specified-fields-and-the-id-field-only) 참고)
+
+ `controllers/users`
+
+```js
+usersRouter.get("/", async (request, response, next) => {
+  	// populate의 2번째 파라미터로 우리가 원하는 field 만 전달
+    const users = await User.find({}).populate("notes", {
+        content: 1,
+        date: 1
+    });
+    response.json(users.map(u => u.toJSON()));
+});
+```
+
+마찬가지 방법으로 Notes 를 GET 해올 때도 user의 Information을 가져오게끔 한다.
+
+`controllers/notes`
+
+```js
+notesRouter.get("/", async (request, response) => {
+    const notes = await Note.find({}).populate("user", {
+        username: 1,
+        name: 1
+    });
+    response.json(notes.map(note => note.toJSON()));
+});
+```
+이제 아래와 같이 우리가 원하는 user object 의 field 만이 (username, name)이 Note object의 user field에 딸려오는 것을 볼 수 있다.
+
+![image-20200312161417431]([lecture]Part4-Testing-Express-servers-user-administration.assets/image-20200312161417431.png)
+
+⚠️ 주의할 점: Mongo DB는 notes 의 user field 에 저장된 id 들이 user collection의 document 들을 reference 하고 있다는 것을 모른다!
+
+이 polulate method 가 가능했던 것은, 어디까지나 우리가 Mongoose schema 에서 user field의 type과 ref 를 아래와 같이 정의해줬기 때문이라는 것을 꼭 이해할 것.
+
+```js
+const noteSchema = new mongoose.Schema({
+  content: {
+    type: String,
+    required: true,
+    minlength: 5
+  },
+  date: Date,
+  important: Boolean,
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 })
 ```
