@@ -600,3 +600,40 @@ userRouter.get("/", async (request, response) => {
 
 이렇게 Model 과 Controller 을 수정하면, /api/notes 또는 /api/blogs 로 GET 요청 시 각각 user, blogs 필드에서 두 collection 이 join 된 결과를 볼 수 있다.
 
+### 4. 토큰 인증 도입하기
+
+1) jwt 라이브러리 설치 및 login 을 담당하는 라우터 만들기
+
+`controllers/login`
+
+```js
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const loginRouter = require("express").Router();
+const User = require("../models/user");
+
+loginRouter.post("/", async (request, response) => {
+    const body = response.body;
+    const user = await User.findOne({ username: body.username });
+    const passwordCorrect =
+        user === null
+            ? false
+            : await bcrypt.compare(body.password, user.password);
+
+    if (!(user && passwordCorrect)) {
+        return response
+            .status(401)
+            .json({ error: "invalid username or password" });
+    }
+    const userForToken = {
+      username = user.username,
+      id = user._id
+    };
+    const token = jwt.sign(userForToken, process.env.SECRET)
+    response.status(200).send({token, username:user.username, name:user.name})
+});
+
+module.exports = loginRouter
+```
+
+이후  app.js 에 위 loginRouter 등록해줄 것 (/api/login 경로로!)

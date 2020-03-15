@@ -755,7 +755,7 @@ loginRouter.post("/", async (request, response) => {
     if (!(user && passwordCorrect)) {
         // code 401 unauthorized
         return response.status(401).json({
-            error: "invalid username or password"
+            
         });
     }
   
@@ -816,7 +816,7 @@ notesRouter.post("/", async (request, response, next) => {
     try {
       	// decodedToken은 jwt.verify를 통해 토큰의 유효성을 체크하고 decode 한다 ( = token 생성시 payload로 넘겨준 object 를 리턴한다)
         const decodedToken = jwt.verify(token, process.env.SECRET);
-      	// token이 없거나 decoded 된 token이 user id를 포함하고 있지 않으면 401 unauthorized 리턴
+      	// token이 없거나 decoded 된 token이 user id를 포함하고 있지 않으면 401 unauthorized flxj
         if (!token || !decodedToken.id) {
             response.status(401).json({ error: "token missing or invalid" });
         }
