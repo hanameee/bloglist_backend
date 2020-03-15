@@ -686,3 +686,42 @@ blogsRouter.post("/", async (request, response, next) => {
 });
 ```
 
+3) `getTokenFrom` 기능 middleware로 분리하기
+
+`utils/middleware.js`
+
+```js
+const tokenExtractor = (request, response, next) => {
+    const authorization = request.get("authorization");
+    if (authorization && authorization.toLowerCase().startsWith("bearer")) {
+        request.token = authorization.substring(7);
+    }
+  	// 이 next() 를 안써주면 작동하지 않는다. 조심
+    next();
+};
+```
+
+`app.js`
+
+```js
+app.use(middleware.tokenExtractor);
+// router 사용 전에 tokenExtractor 미들웨어 사용해주기
+
+app.use("/api/blogs", notesRouter);
+app.use("/api/users", usersRouter);
+app.use("/api/login", loginRouter);
+```
+
+`controllers/blogs`
+
+```js
+// getTokenFrom 함수를 없애고 미들웨어로 기능을 분리했으니, request.token 에서 바로 가져다 쓰기!
+blogsRouter.post("/", async (request, response, next) => {
+    const body = request.body;
+    try {
+        const decodedToken = jwt.verify(request.token, process.env.SECRET);
+        if (!request.token || !decodedToken.id) {
+            response.status(401).json({ error: "token missing or invalid" });
+        }
+```
+

@@ -26,6 +26,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 app.use(express.static("build"));
+app.use(middleware.tokenExtractor);
 morgan.token("data", function(req, res) {
     return JSON.stringify(req.body);
 });

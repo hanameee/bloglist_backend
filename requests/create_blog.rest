@@ -1,9 +1,9 @@
 post http://localhost:3001/api/blogs
 Content-Type: application/json
-Authorization: bearer <토큰>
+Authorization: bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InJhaW53YWx0eiIsImlkIjoiNWU2YTU1MjkwZDFmNjBjMDg0ZmE0NmMyIiwiaWF0IjoxNTg0MjYxNjU5fQ.VrYq-eITX4k1DcViAS4a25SnyXzTKq4Y9KKNtHXtULw
 
 {
-    "title": "Hannah's third blog with Token!",
-    "author": "hannahbanana",
-    "url": "http://www.google.com"
+    "title": "om nom nom",
+    "author": "jeonghohoho",
+    "url": "https://fullstackopen.com/en/part4/token_authentication"
 }
