@@ -725,3 +725,39 @@ blogsRouter.post("/", async (request, response, next) => {
         }
 ```
 
+4) 작성자만 blog 를 삭제할 수 있도록 하기
+
+`controllers/blogs`
+
+```js
+blogsRouter.delete("/:id", async (request, response, next) => {
+    try {
+      	// 블로그를 찾은 후
+        const blog = await Blog.findById(request.params.id);
+    		// token을 decode 하는 과정을 추가하고
+        const decodedToken = jwt.verify(request.token, process.env.SECRET);
+      	// 토큰이 없거나 유효하지 않으면 해당 에러메세지를
+        if (!request.token || !decodedToken.id) {
+            response.status(401).json({ error: "token missing or invalid" });
+        }
+      	// 토큰이 있지만 blog 작성자가 아니라면 해당 에러메세지를 뿜뿜
+        else if (decodedToken.id !== blog.user.toString()) {
+            response
+                .status(401)
+                .json({ error: "blog can only be deleted by its creator" });
+        		return;
+        // 위의 두 경우가 아닐 경우에만 (유효한 토큰이고 작성자일 경우) 삭제하고 204 리턴
+        } else {
+           	await Blog.remove(blog);
+          	response.status(204).end();         
+        }
+    } catch (exception) {
+        next(exception);
+    }
+});
+```
+
+blog의 user field 가 가지고 있는 값은 **Object** 이므로, 이를 token 이 리턴한 user id ( String ) 값과 비교하려면 아래처럼 toString() 을 해줘야 한다!
+
+`decodedToken.id !== blog.user.toString()`
+

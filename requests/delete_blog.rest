@@ -1,1 +1,2 @@
-delete http://localhost:3001/api/blogs/5e61e32e8c3bc219eb962476
+delete http://localhost:3001/api/blogs/5e6df05e5d598a23efb8f7bc
+Authorization: bearer <토큰>
