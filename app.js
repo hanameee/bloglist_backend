@@ -8,6 +8,8 @@ const logger = require("./utils/logger");
 const middleware = require("./utils/middleware");
 const config = require("./utils/config");
 const notesRouter = require("./controllers/blogs");
+const usersRouter = require("./controllers/users");
+const loginRouter = require("./controllers/login");
 
 mongoose.set("useUnifiedTopology", true);
 logger.info("connecting to", config.MONGODB_URI);
@@ -24,6 +26,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 app.use(express.static("build"));
+app.use(middleware.tokenExtractor);
 morgan.token("data", function(req, res) {
     return JSON.stringify(req.body);
 });
@@ -37,6 +40,8 @@ if (process.env.NODE_ENV !== "test") {
 }
 
 app.use("/api/blogs", notesRouter);
+app.use("/api/users", usersRouter);
+app.use("/api/login", loginRouter);
 
 app.use(middleware.unknownEndpoint);
 app.use(middleware.errorHandler);

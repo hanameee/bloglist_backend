@@ -712,3 +712,131 @@ const noteSchema = new mongoose.Schema({
 })
 ```
 
+
+
+## [d) Token authentication](https://fullstackopen.com/en/part4/token_authentication)
+
+ 유저는 우리 application에 로그인이 가능해야 하고, 유저가 로그인 된 상태에서 note 를 만들 경우 해당 user information 이 자동으로 note에 포함되어야 한다.
+
+우리는 이 로그인 기능을 [token based authentication](https://scotch.io/tutorials/the-ins-and-outs-of-token-based-authentication#toc-how-token-based-works) 을 통해 우리 백엔드에 구현할 것임!
+
+Token based authentication 은 아래와 같이 동작한다.
+
+![16e](https://fullstackopen.com/static/8b2839fe97680c325df6647121af66c3/14be6/16e.png)
+
+우리는 jsonwebtoken 라이브러리를 통해서 [JSON web tokens](https://jwt.io/) 을 생성할 것임.
+
+```bash
+npm install jsonwebtoken --save
+```
+
+`npm install jsonwebtoken --save `
+
+### loginRouter handler 만들기
+`controllers/login`
+
+```js
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const loginRouter = require("express").Router();
+const User = require("../models/user");
+
+loginRouter.post("/", async (request, response) => {
+    const body = request.body;
+  	// 1. body의 username과 일치하는 User 객체가 DB에 있는지 찾기
+    const user = await User.findOne({ username: body.username });
+  	// 2. user 객체가 있다면 해당 user 객체의 passwordHash 값이 body의 password (가 암호화된 hash) 와 같은지 bcrypt.compare 을 통해 확인하기
+    const passwordCorrect =
+        user === null
+            ? false
+            : await bcrypt.compare(body.password, user.passwordHash);
+  
+  	// 3. 찾아진 user 객체가 없거나 (invalid username) passwordCorrect가 false라면 (invalid password) 401 코드와 error message를 반환하기
+    if (!(user && passwordCorrect)) {
+        // code 401 unauthorized
+        return response.status(401).json({
+            
+        });
+    }
+  
+  	// 4. token의 기반이 될 payload object
+    const userForToken = {
+        username: user.username,
+        id: user._id
+    };
+  
+  	// 5. jwt를 sign 하기 - .env 파일에 있는 SECRET 환경변수를 알고 있어야만 유효한 token을 생성할 수 있음
+    const token = jwt.sign(userForToken, process.env.SECRET);
+  
+  	// 6. 요청이 성공하면 200 OK 응답과 함께 생성된 token과 username, user 정보다 response body에 함께 날아간다
+    response
+        .status(200)
+        .send({ token, username: user.username, name: user.name });
+});
+
+module.exports = loginRouter;
+```
+
+`app.js`
+
+app.js 에 loginRouter 등록해주기
+
+```js
+const loginRouter = require('./controllers/login')
+
+//...
+
+app.use('/api/login', loginRouter)
+```
+
+### 로그인 된 유저만 note 를 생성할 수 있도록 제한하기
+
+note에 대한 post request 가 유효한 token 을 가지고 있어야만 notes 를 생성할 수 있도록 변경해야 함.
+그리고 해당 note가 token 으로 식별된 user 객체의 notes field 배열에 저장되게! 브라우저에서 서버로 token 을 전송하는 방법은 다양하지만, 우리는 [Authorization](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization) header 을 활용할 것임. 만약 서버가 authenticate 하기 위해 다양한 방법을 사용한다면, header 은 어떤 [authentication schema](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication#Authentication_schemes) 가 사용되었는지도 알려줘야 한다. 우리는 Bearer schema 를 사용할 것이고, token 앞에 prefix 로 붙이는 방식으로 구현할 것.
+
+`controllers/notes` 
+
+```js
+const jwt = require("jsonwebtoken");
+
+// ...
+// getTokenFrom 함수는 authorization 헤더에서 token만을 빼서 리턴한다
+const getTokenFrom = request => {
+    const authorization = request.get("authorization");
+    if (authorization && authorization.toLowerCase().startsWith("bearer ")) {
+        return authorization.substring(7);
+    }
+    return null;
+};
+
+notesRouter.post("/", async (request, response, next) => {
+    const body = request.body;
+    const token = getTokenFrom(request);
+
+    try {
+      	// decodedToken은 jwt.verify를 통해 토큰의 유효성을 체크하고 decode 한다 ( = token 생성시 payload로 넘겨준 object 를 리턴한다)
+        const decodedToken = jwt.verify(token, process.env.SECRET);
+      	// token이 없거나 decoded 된 token이 user id를 포함하고 있지 않으면 401 unauthorized flxj
+        if (!token || !decodedToken.id) {
+            response.status(401).json({ error: "token missing or invalid" });
+        }
+
+        const user = await User.findById(decodedToken.id);
+        const note = new Note({
+            content: body.content,
+            important: body.important || false,
+            date: new Date(),
+            user: user._id
+        });
+        const savedNote = await note.save();
+        user.notes = user.notes.concat(savedNote._id);
+        await user.save();
+        response.json(savedNote.toJSON());
+    } catch (exception) {
+        next(exception);
+    }
+});
+
+// ...
+```
+

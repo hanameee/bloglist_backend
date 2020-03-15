@@ -396,8 +396,6 @@ beforeEach(async () => {
 });
 ```
 
-
-
 #### jest + supertest 를 사용한 테스트
 
 `const api = supertest(app)` 처럼 Express application 을 supertest로 감싸주면 api 를 [superagent](https://github.com/visionmedia/superagent) 객체로 사용할 수 있다.
@@ -428,12 +426,338 @@ test("all blogs are returned", async () => {
 //...
 ```
 
-
-
 #### Describe 를 통한 test 구조화
 
 Jest의 describe 함수를 사용하면 여러가지 test 들을 계층을 두어 구조화시킬 수 있다.
 Test case 들이 많아질 경우 아래처럼 구조화시키면 보기 좋다! 😉
 
 ![image-20200310183447386]([Exercise]Part4-Blog-List-Application.assets/image-20200310183447386.png)
+
+
+
+## 5. User management 기능 도입하기
+
+### 1. 단순 User HTTP POST 기능 + password hash 기능 구현
+
+- User model 파일 생성 (model/user)
+
+  ```js
+  const mongoose = require("mongoose");
+  
+  const userSchema = new mongoose.Schema({
+      username: String,
+      name: String,
+      password: String
+  });
+  
+  userSchema.set("toJSON", {
+      transform: (document, returnedObject) => {
+          returnedObject._id = returnedObject._id.toString();
+          delete returnedObject._id;
+          delete returnedObject.__v;
+          delete returnedObject.password;
+      }
+  });
+  
+  module.exports = mongoose.model("User", userSchema);
+  ```
+
+- userRouter handler 생성 (controllers/users)
+
+  ```js
+  const bcrypt = require("bcrypt");
+  const userRouter = require("express").Router();
+  const User = require("../models/user");
+  
+  userRouter.get("/", async (request, response) => {
+      const users = await User.find({});
+      response.json(users.map(u => u.toJSON()));
+  });
+  
+  userRouter.post("/", async (request, response, next) => {
+      try {
+          const body = request.body;
+          const saltRounds = 10;
+          const passwordHash = await bcrypt.hash(body.password, saltRounds);
+          const user = new User({
+              username: body.username,
+              name: body.name,
+              password: passwordHash
+          });
+          const savedUser = await user.save();
+          response.json(savedUser);
+      } catch (exception) {
+          next(exception);
+      }
+  });
+  
+  module.exports = userRouter;
+  ```
+
+  post 엔 password 를 직접 저장하는 것이 아니라, bcrypt 를 통해 암호화한 password hash 값을 저장해야 함에 유의할 것.
+
+### 2. User 생성 제약조건 두기
+
+1) username과 password 는 필수 값 : mongoose의 [built-in](https://mongoosejs.com/docs/validation.html#built-in-validators) validation 사용
+2) username과 password 는 최소 3글자 이상 : username은 mongoose의 [built-in](https://mongoosejs.com/docs/validation.html#built-in-validators) validation을, password 는 hash값으로 db에 저장되므로 db에서 validate 하는 것이 아니라 controller에서 validate 할 것
+3) username은 unique 할 것 : mongoose-unique-validator 플러그인 사용
+
+`models/user`
+
+```js
+const mongoose = require("mongoose");
+const uniqueValidator = require("mongoose-unique-validator");
+
+const userSchema = new mongoose.Schema({
+    username: { type: String, unique: true, required: true, minlength: 3 },
+    name: String,
+    password: { type: String, required: true }
+});
+// ...
+```
+
+`controllers/users`
+
+```js
+userRouter.post("/", async (request, response, next) => {
+    try {
+        const body = request.body;
+        if (body.password.length < 3) {
+            return response
+                .status(400)
+                .json({
+                    error:
+                        "User validation failed: : Password is shorter than the minimum allowed length (3)."
+                });
+        }
+```
+
+password의 length validation은 이렇게 controller에서 해주기!
+
+### 3. User과 Blog 연결하기
+
+Blog는 blog 를 작성한 사람의 user information 을 가지고 있게, User은 자신이 작성한 blogs 들의 정보를 가지고 있게 변경하자.
+
+1) Schema 변경
+
+`models/blog`
+
+```js
+const blogSchema = new mongoose.Schema({
+    title: String,
+    author: String,
+    url: String,
+    likes: Number,
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+    }
+});
+```
+
+`models/user`
+
+```js
+const userSchema = new mongoose.Schema({
+    username: { type: String, unique: true, required: true, minlength: 3 },
+    name: String,
+    password: { type: String, required: true },
+    blogs: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Blog"
+        }
+    ]
+});
+```
+
+2) Controller 에서 Populate 메소드 사용
+
+`controllers/blogs`
+
+```js
+blogsRouter.get("/", async (request, response) => {
+    const blogs = await Blog.find({}).populate("user", {
+        username: 1,
+        name: 1
+    });
+    response.json(blogs);
+});
+```
+
+`controllers/users`
+
+```js
+userRouter.get("/", async (request, response) => {
+    const users = await User.find({}).populate("blogs", {
+        url: 1,
+        title: 1,
+        author: 1
+    });
+    response.json(users.map(u => u.toJSON()));
+});
+```
+
+이렇게 Model 과 Controller 을 수정하면, /api/notes 또는 /api/blogs 로 GET 요청 시 각각 user, blogs 필드에서 두 collection 이 join 된 결과를 볼 수 있다.
+
+### 4. 토큰 인증 도입하기
+
+1) jwt 라이브러리 설치 및 login 을 담당하는 라우터 만들기
+
+`controllers/login`
+
+```js
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const loginRouter = require("express").Router();
+const User = require("../models/user");
+
+loginRouter.post("/", async (request, response) => {
+    const body = response.body;
+    const user = await User.findOne({ username: body.username });
+    const passwordCorrect =
+        user === null
+            ? false
+            : await bcrypt.compare(body.password, user.password);
+
+    if (!(user && passwordCorrect)) {
+        return response
+            .status(401)
+            .json({ error: "invalid username or password" });
+    }
+    const userForToken = {
+      username = user.username,
+      id = user._id
+    };
+    const token = jwt.sign(userForToken, process.env.SECRET)
+    response.status(200).send({token, username:user.username, name:user.name})
+});
+
+module.exports = loginRouter
+```
+
+이후  app.js 에 위 loginRouter 등록해줄 것 (/api/login 경로로!)
+
+2) 유효한 토큰이 request header에 포함된 경우에만 blog의 POST 요청이 가능하게 하고, 해당 토큰 정보를 바탕으로 DB 정보를 업데이트하기
+
+`controllers/blogs`
+
+```js
+const blogsRouter = require("express").Router();
+const Blog = require("../models/blog");
+const User = require("../models/user");
+const jwt = require("jsonwebtoken");
+//...
+
+const getTokenFrom = request => {
+    const authorization = request.get("authorization");
+    if (authorization && authorization.toLowerCase().startsWith("bearer")) {
+        return authorization.substring(7);
+    }
+    return null;
+};
+
+blogsRouter.post("/", async (request, response, next) => {
+    const body = request.body;
+    const token = getTokenFrom(request);
+    try {
+        const decodedToken = jwt.verify(token, process.env.SECRET);
+        if (!token || !decodedToken.id) {
+            response.status(401).json({ error: "token missing or invalid" });
+        }
+      	// 이제 user은 token 정보를 바탕으로 가져온다
+        const user = await User.findById(decodedToken.id);
+        const blog = new Blog({
+            title: body.title,
+            author: body.author,
+            url: body.url,
+            likes: body.likes ? body.likes : 0,
+            user: user._id
+        });
+        const savedBlog = await blog.save();
+
+        user.blogs = user.blogs.concat(savedBlog._id);
+        await user.save();
+
+        response.json(savedBlog.toJSON());
+    } catch (exception) {
+        next(exception);
+    }
+});
+```
+
+3) `getTokenFrom` 기능 middleware로 분리하기
+
+`utils/middleware.js`
+
+```js
+const tokenExtractor = (request, response, next) => {
+    const authorization = request.get("authorization");
+    if (authorization && authorization.toLowerCase().startsWith("bearer")) {
+        request.token = authorization.substring(7);
+    }
+  	// 이 next() 를 안써주면 작동하지 않는다. 조심
+    next();
+};
+```
+
+`app.js`
+
+```js
+app.use(middleware.tokenExtractor);
+// router 사용 전에 tokenExtractor 미들웨어 사용해주기
+
+app.use("/api/blogs", notesRouter);
+app.use("/api/users", usersRouter);
+app.use("/api/login", loginRouter);
+```
+
+`controllers/blogs`
+
+```js
+// getTokenFrom 함수를 없애고 미들웨어로 기능을 분리했으니, request.token 에서 바로 가져다 쓰기!
+blogsRouter.post("/", async (request, response, next) => {
+    const body = request.body;
+    try {
+        const decodedToken = jwt.verify(request.token, process.env.SECRET);
+        if (!request.token || !decodedToken.id) {
+            response.status(401).json({ error: "token missing or invalid" });
+        }
+```
+
+4) 작성자만 blog 를 삭제할 수 있도록 하기
+
+`controllers/blogs`
+
+```js
+blogsRouter.delete("/:id", async (request, response, next) => {
+    try {
+      	// 블로그를 찾은 후
+        const blog = await Blog.findById(request.params.id);
+    		// token을 decode 하는 과정을 추가하고
+        const decodedToken = jwt.verify(request.token, process.env.SECRET);
+      	// 토큰이 없거나 유효하지 않으면 해당 에러메세지를
+        if (!request.token || !decodedToken.id) {
+            response.status(401).json({ error: "token missing or invalid" });
+        }
+      	// 토큰이 있지만 blog 작성자가 아니라면 해당 에러메세지를 뿜뿜
+        else if (decodedToken.id !== blog.user.toString()) {
+            response
+                .status(401)
+                .json({ error: "blog can only be deleted by its creator" });
+        		return;
+        // 위의 두 경우가 아닐 경우에만 (유효한 토큰이고 작성자일 경우) 삭제하고 204 리턴
+        } else {
+           	await Blog.remove(blog);
+          	response.status(204).end();         
+        }
+    } catch (exception) {
+        next(exception);
+    }
+});
+```
+
+blog의 user field 가 가지고 있는 값은 **Object** 이므로, 이를 token 이 리턴한 user id ( String ) 값과 비교하려면 아래처럼 toString() 을 해줘야 한다!
+
+`decodedToken.id !== blog.user.toString()`
 
