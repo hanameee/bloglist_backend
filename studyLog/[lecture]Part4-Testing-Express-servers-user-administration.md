@@ -791,8 +791,8 @@ app.use('/api/login', loginRouter)
 
 ### 로그인 된 유저만 note 를 생성할 수 있도록 제한하기
 
-post request 가 유효한 token 을 가지고 있어야만 notes 를 생성할 수 있도록 변경해야 함.
-그리고 token 으로 식별된 user 객체의 notes field 배열에 저장되게!브라우저에서 서버로 token 을 전송하는 방법은 다양하지만, 우리는 [Authorization](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization) header 을 활용할 것임. 만약 서버가 authenticate 하기 위해 다양한 방법을 사용한다면, header 은 어떤 [authentication schema](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication#Authentication_schemes) 가 사용되었는지도 알려줘야 한다. 우리는 Bearer schema 를 사용할 것이고, token 앞에 prefix 로 붙이는 방식으로 구현할 것.
+note에 대한 post request 가 유효한 token 을 가지고 있어야만 notes 를 생성할 수 있도록 변경해야 함.
+그리고 해당 note가 token 으로 식별된 user 객체의 notes field 배열에 저장되게! 브라우저에서 서버로 token 을 전송하는 방법은 다양하지만, 우리는 [Authorization](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization) header 을 활용할 것임. 만약 서버가 authenticate 하기 위해 다양한 방법을 사용한다면, header 은 어떤 [authentication schema](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication#Authentication_schemes) 가 사용되었는지도 알려줘야 한다. 우리는 Bearer schema 를 사용할 것이고, token 앞에 prefix 로 붙이는 방식으로 구현할 것.
 
 `controllers/notes` 
 
@@ -821,7 +821,7 @@ notesRouter.post("/", async (request, response, next) => {
             response.status(401).json({ error: "token missing or invalid" });
         }
 
-        const user = await User.findById(body.userId);
+        const user = await User.findById(decodedToken.id);
         const note = new Note({
             content: body.content,
             important: body.important || false,

@@ -637,3 +637,52 @@ module.exports = loginRouter
 ```
 
 이후  app.js 에 위 loginRouter 등록해줄 것 (/api/login 경로로!)
+
+2) 유효한 토큰이 request header에 포함된 경우에만 blog의 POST 요청이 가능하게 하고, 해당 토큰 정보를 바탕으로 DB 정보를 업데이트하기
+
+`controllers/blogs`
+
+```js
+const blogsRouter = require("express").Router();
+const Blog = require("../models/blog");
+const User = require("../models/user");
+const jwt = require("jsonwebtoken");
+//...
+
+const getTokenFrom = request => {
+    const authorization = request.get("authorization");
+    if (authorization && authorization.toLowerCase().startsWith("bearer")) {
+        return authorization.substring(7);
+    }
+    return null;
+};
+
+blogsRouter.post("/", async (request, response, next) => {
+    const body = request.body;
+    const token = getTokenFrom(request);
+    try {
+        const decodedToken = jwt.verify(token, process.env.SECRET);
+        if (!token || !decodedToken.id) {
+            response.status(401).json({ error: "token missing or invalid" });
+        }
+      	// 이제 user은 token 정보를 바탕으로 가져온다
+        const user = await User.findById(decodedToken.id);
+        const blog = new Blog({
+            title: body.title,
+            author: body.author,
+            url: body.url,
+            likes: body.likes ? body.likes : 0,
+            user: user._id
+        });
+        const savedBlog = await blog.save();
+
+        user.blogs = user.blogs.concat(savedBlog._id);
+        await user.save();
+
+        response.json(savedBlog.toJSON());
+    } catch (exception) {
+        next(exception);
+    }
+});
+```
+

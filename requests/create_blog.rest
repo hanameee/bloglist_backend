@@ -1,9 +1,9 @@
 post http://localhost:3001/api/blogs
 Content-Type: application/json
+Authorization: bearer <토큰>
 
 {
-    "title": "Hannah's second blog",
+    "title": "Hannah's third blog with Token!",
     "author": "hannahbanana",
-    "url": "http://www.facebook.com",
-    "userId": "5e6a26c30d1f60c084fa46c1"
+    "url": "http://www.google.com"
 }
